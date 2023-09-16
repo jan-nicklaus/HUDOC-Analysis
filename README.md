@@ -2,7 +2,7 @@
 Download and search HUDOC documents to create case law overviews
 
 ## Running HUDOC Analysis
-For Windows and Linux, you can use the pre-built executables. To run from source, install python 3.7+ and pip. Then, in the source directory, run "pip install -r requirements.txt". After the installation finishes, you can run the tool with "python hudoc_analysis.py".
+For Windows and Linux, you can use the pre-built executables found under release v0.1. To run from source, install python 3.7+ and pip. Then, in the source directory, run "pip install -r requirements.txt". After the installation finishes, you can run the tool with "python hudoc_analysis.py".
 
 ## Create sets
 Download documents from HUDOC filtered by timespan, doctype, language, respondent. You can also include links to Strasbourg Observer posts mentioning each downloaded document. For english judgments and decisions, the tool allows filtering out parties' submissions for a better overview (experimental). Document metadata and text is stored in an SQLite 3 file for each set and can be easily exchanged or used for analysis. Set merging is possible for better customization of datasets.
