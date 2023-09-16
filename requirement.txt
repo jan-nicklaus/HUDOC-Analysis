@@ -1,0 +1,6 @@
+requests
+tqdm
+eel
+docx
+bs4
+lxml
