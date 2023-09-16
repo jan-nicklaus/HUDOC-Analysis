@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <title>HUDOC Analysis</title>
+    <script type='text/javascript' src='/eel.js'></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="style.css" rel="stylesheet">
+    <script type="text/javascript">
+      document.addEventListener("alpine:init", () => {
+        Alpine.data("state", () => ({
+          tab: "dl",
+          
+          fromdate: "2022-01-01",
+          todate: "2022-12-31",
+          savename: "",
+          types: {
+            JUDGMENTS: {include: true, display: "Judgments"},
+            DECISIONS: {include: true, display: "Decisions"},
+            ADVISORYOPINIONS: {include: true, display: "Advisory Opinions"}, 
+            CLIN: {include: false, display: "Legal Summaries (CLIN)"}
+          },
+          addTypes: "",
+          langs: {
+            ENG: {include: true, display: "English"},
+            FRA: {include: false, display: "French"}
+          },
+          addLangs: "",
+          respondent: "",
+          customQuery: "",
+          includeObserver: true,
+          experimentalShort: false,
+          baseSet: false,
+          baseSetName: "",
+
+          sets: [],
+          keywordFiles: [],
+          setName: "",
+          keywordFile: "",
+          hideSeen: true,
+          includeUndecided: false,
+          keywords: {},
+          docs: {},
+          tree: {},
+          treeHTML: "",
+          docIndex: "",
+          currentA: "",
+          currentK: "",
+          ctaDisable: false,
+          async dlHudoc() {
+            if(this.savename === "") return
+            this.ctaDisable = true;
+            const types = Object.keys(this.types).filter(k => this.types[k]).concat(this.addTypes.split(",").filter(t => t !== ""));
+            const langs = Object.keys(this.langs).filter(k => this.langs[k]).concat(this.addLangs.split(",").filter(l => l !== ""));
+            const respondent = this.respondent.split(",").filter(r => r !== "");
+            await eel.dl_hudoc(this.fromdate, this.todate, this.savename, types, langs, respondent, this.includeObserver, this.experimentalShort, this.customQuery, this.baseSet ? this.baseSetName : "")();
+            this.ctaDisable = false;
+            if(this.sets.length === 0) getSetsAndKeywords()
+            else this.sets.unshift(this.savename)
+            this.setName = this.savename + ".db";
+            this.savename = "";
+            if(document.getElementById("progress").value === 100) this.tab = "ae";
+          },
+          async getDlOptionHTML() {
+            let optHTML = '<p class="text-xl mt-8 mb-4">Document types</p><div class="flex items-center pr-2">';
+            optHTML += Object.keys(this.types).map(t => `<p class="ml-2 mr-2" x-text="types['${t}'].display"></p><input type="checkbox" x-bind:disabled="customQuery !== ''" x-bind:value="types['${t}'].include" @change="e => types['${t}'].include = e.target.checked" />`).join("");
+            optHTML += `<input x-bind:disabled="customQuery !== ''" class="ml-2 p-2 border-2 rounded h-10 flex-grow" x-bind:value="addTypes" @change="e => addTypes = e.target.value" placeholder="Further document types (comma separated list)"/>`;
+            
+            optHTML+= '</div><p class="text-xl mt-8 mb-4">Languages</p><div class="flex items-center pr-2">';
+            optHTML += Object.keys(this.langs).map(l => `<p class="ml-2 mr-2" x-text="langs['${l}'].display"></p><input type="checkbox" x-bind:disabled="customQuery !== ''" x-bind:value="langs['${l}'].include" @change="e => langs['${l}'].include = e.target.checked" />`).join("");
+            optHTML += `<input x-bind:disabled="customQuery !== ''" class="ml-2 p-2 border-2 rounded h-10 flex-grow" x-bind:value="addLangs" @change="e => addLangs = e.target.value" placeholder="Further languages (comma separated list)"/>`;
+            
+            optHTML += `</div>`
+
+            return optHTML;
+          },
+          async getDocs() {
+            this.ctaDisable = true;
+            document.getElementById("analyzeButton").disabled = true;
+            document.getElementById("analyzeButton").innerText = "Loading...";
+            [this.docs, this.tree] = await eel.get_docs(this.setName, this.hideSeen, this.keywords)();
+            this.docIndex = "";
+            this.treeHTML = this.getIdListHTML();
+            document.getElementById("analyzeButton").disabled = false;
+            document.getElementById("analyzeButton").innerText = "Analysis";
+            if(Object.keys(this.docs).length === 0) alert("No results!")
+            else this.tab = "ed";
+            this.ctaDisable = false;
+          },
+          async getSetsAndKeywords() {
+            if(this.sets.length > 0) return
+            [this.sets, this.keywordFiles] = await eel.get_sets()();
+            if(this.sets.length > 0) {
+              this.setName = this.sets[0];
+              this.baseSetName = this.sets[0];
+            }
+            if(this.keywordFiles.length > 0) {
+              this.keywordFile = this.keywordFiles[0];
+              this.readKeywords();
+            }
+          },
+          async readKeywords() {
+            this.keywords = await eel.read_kw_file(this.keywordFile)();
+          },
+          async getOptHTML(opts) {
+            return opts.map(o => `<option value='${o}'>${o}</option>`).join('')
+          },
+          async changeClassName(oldName, newName) {
+            elements = document.getElementsByClassName(oldName);
+            for(let i = 0; i < elements.length; i++) {
+              elements[i].className = newName
+            }
+          },
+          async setDocIndex(index, a, k) {
+            if(this.docIndex !== "") {
+              this.changeClassName(`doc-list-${this.docIndex}`, 
+                `doc-list-${this.docIndex} w-full h-20 border-2 border-black ${this.docs[this.docIndex].approve_status == 1 ? 'bg-green-100' : ''}${
+                  this.docs[this.docIndex].approve_status == 2 ? 'bg-red-100' : ''}`); 
+            }
+            this.docIndex = index + "";
+            this.currentA = a;
+            this.currentK = k;
+            this.changeClassName(`doc-list-${this.docIndex}`, `doc-list-${this.docIndex} w-full h-20 border-2 border-black bg-black text-white`);
+          },
+          async setDocStatus(status) {
+            if(this.docIndex == "") return
+            this.docs[this.docIndex].approve_status = status + 0;
+            eel.set_doc_status(this.docs[this.docIndex].itemid, status);
+            let i = this.tree[this.currentA][this.currentK].indexOf(this.docIndex);
+            if(i >= 0 && i < this.tree[this.currentA][this.currentK].length - 1) {
+              this.setDocIndex(this.tree[this.currentA][this.currentK][i + 1], this.currentA, this.currentK)
+            }
+          },
+          async toggleCaret(target) {
+            target.parentElement.querySelector(".nested").classList.toggle("active");
+            target.classList.toggle("caret-down");
+          },
+          async getIdListHTML() {
+            let listHTML = '<ul id="headerTree">';
+            Object.keys(this.tree).forEach(a => {
+              const artHeader = a.startsWith("P") ? `Article ${a.substring(a.indexOf('-') + 1)} Protocol ${a.substring(1, a.indexOf('-'))}` : `Article ${a} ECHR`
+              listHTML += `<li><span class="caret" @click="e => toggleCaret(e.target)">${artHeader}</span><ul class="nested">`;
+              Object.keys(this.tree[a]).forEach(k => {
+                listHTML += `<li class="ml-4"><span class="caret" @click="e => toggleCaret(e.target)">${k}</span><ul class="nested">`;
+                this.tree[a][k].forEach(id => listHTML += `<li class="ml-4">
+                  <div class="doc-list-${id} w-full h-20 border-2 border-black ${this.docs[id].approve_status == 1 ? 'bg-green-100' : ''}
+                    ${this.docs[id].approve_status == 2 ? 'bg-red-100' : ''}
+                    ${id === this.docIndex ? 'bg-black text-white' : ''}" 
+                    @click="() => setDocIndex('${id}', '${a}', '${k}')">
+                    ${this.docs[id].header}</div>
+                </li>`)
+                listHTML +="</ul></li>"
+              });
+              listHTML +="</ul></li>"
+            });
+            listHTML += "</ul>";
+            return listHTML
+          },
+          async getInfoHTML() {
+            if(this.docIndex == "") return ""
+            let infoHTML = `<h2 class="text-xl mb-2 mt-4">${this.docs[this.docIndex].header}</h2>`
+            infoHTML+= `<a href="${this.docs[this.docIndex].url}" target="_blank" class="text-indig-600">${this.docs[this.docIndex].url}</a>`
+            infoHTML += "<table><tr><td class='border'><b>Keyword</b></td><td class='border'><b>Matches</b></td></tr>"
+            Object.keys(this.docs[this.docIndex].kw_count).forEach(k => infoHTML += `<tr><td class='border'>${k}</td><td class='border'>${this.docs[this.docIndex].kw_count[k]}</td></tr>`)
+            infoHTML += "</table>"
+            infoHTML += `<p class="mt-4 mb-2">${this.docs[this.docIndex].conclusion_text}</p>`
+            infoHTML += this.docs[this.docIndex].observer_urls.split(";;;").map(u => u !== "" ? `<a href="${u}" target="_blank" class="text-indigo-600 mt-4 mb-2">${u}</a>` : "").join("");
+            infoHTML += `<p class="mt-4 mb-2">${this.docs[this.docIndex].date}</p>`
+            infoHTML += `<p class="mt-4 mb-2">${this.docs[this.docIndex].separate}</p>`
+            infoHTML += `<p class="mt-4 mb-2">${this.docs[this.docIndex].articles.replaceAll("\n", "<br/>")}</p>`
+            infoHTML += this.docs[this.docIndex].violation_text.length > 0 ? `<p class="mt-4 mb-2">${this.docs[this.docIndex].violation_text.replaceAll("\n", "<br/>")}</p>` : ""
+            infoHTML += `<p class="mt-4 mb-2">${this.docs[this.docIndex].fact_text.replaceAll("\n", "<br/>")}</p>`
+            infoHTML += `<p class="mt-4 mb-2">${this.docs[this.docIndex].law_text.replaceAll("\n", "<br/>")}</p>`
+            return infoHTML
+          },
+          async getButtonClass(approveValue) {
+            if(this.docIndex == "" || this.docs[this.docIndex].approve_status != approveValue) return "flex-grow border"
+            return "flex-grow border bg-black text-white";
+          },
+          async addKeyword() {
+            let h = document.getElementById("addHeader").value
+            let q = document.getElementById("addQuery").value
+            if(Object.keys(this.keywords).includes(h)) {
+              if(this.keywords[h].includes(q)) {
+                alert("Keyword already exists!");
+              }
+              else {
+                this.keywords[h].push(q)
+              }
+            }
+            else {
+              this.keywords[h] = [q]
+            }
+            document.getElementById("addQuery").value = "";
+            eel.save_keywords(this.keywords, this.keywordFile);
+          },
+          async getKeywordChips() {
+            let kwHTML = "<div class='p-2 w-full'><table class='w-full'><tr class='border-t border-b border-black'><td class='w-1/6 border-r border-black'><b>Header</b></td><td class='w-5/6'><b>Queries</b></td></tr>"
+            Object.keys(this.keywords).forEach(h => {
+              kwHTML += `<tr class='border-t border-b border-black'><td class='w-1/6 border-r border-black'>
+                <input value='${h}' @keyup.enter="(e) => {if(e.target.value == '') {return} keywords[e.target.value] = keywords['${h}']; delete keywords['${h}']; eel.save_keywords(keywords, keywordFile);}" class="border p-2"/> 
+                <button @click="() => {delete keywords['${h}']; eel.save_keywords(keywords, keywordFile)}" class="rounded border-2 m-2 p-2 h-10 hover:bg-red-200">x</button>
+                <button @click="() => {document.getElementById('addHeader').value = '${h}'; eel.save_keywords(keywords, keywordFile)}" class="rounded border-2 m-2 p-2 h-10 hover:bg-indigo-200">+</button>
+                </td><td class="flex p-2 w-5/6">`
+              this.keywords[h].forEach(q => {
+                kwHTML += `<button @click="() => removeKeyword('${h}', '${q}')" class="rounded border-2 m-2 p-2 h-10 hover:bg-red-200">${q} x</button>`
+              })
+              kwHTML += "</td></tr></div>"
+            });
+            kwHTML += "</table>"
+            return kwHTML
+          },
+          async removeKeyword(header, query) {
+            this.keywords[header].splice(this.keywords[header].indexOf(query), 1);
+            eel.save_keywords(this.keywords, this.keywordFile);
+          },
+          async createKeywordFile() {
+            this.keywordFiles.unshift(`${document.getElementById("newkwfn").value}.json`);
+            this.keywords = {};
+            eel.save_keywords({}, `${document.getElementById("newkwfn").value}.json`)
+            this.keywordFile = `${document.getElementById("newkwfn").value}.json`;
+            document.getElementById("newkwfn").value = "";
+          },
+          async exportDOCX() {
+            this.ctaDisable = true;
+            await eel.export_docx(this.setName, this.keywords, this.includeUndecided)();
+            this.ctaDisable = false;
+          }
+      })
+    )});
+    
+    function setProgress(progress, progresstext) {
+      if(progress === -1) {
+        document.getElementById("progress").value = 0;
+        document.getElementById("progresstext").innerText = progresstext;
+        alert(progresstext)
+        return
+      }
+      document.getElementById("progress").value = progress;
+      document.getElementById("progresstext").innerText = progresstext;
+    }
+    eel.expose(setProgress);
+    </script>
+  </head>
+  <body class="flex flex-col h-screen bg-white" x-data="state">
+    <header><div class="w-full h-20 flex justify-center bg-white">
+      <div x-bind:class="`text-2xl m-4 cursor-pointer border-black ${tab === 'dl' ? 'border-b-2' : ''}`" @click="tab = 'dl'">Download</div>
+      <div x-bind:class="`text-2xl m-4 cursor-pointer border-black ${tab === 'ae' ? 'border-b-2' : ''}`" @click="() => {tab = 'ae'; getSetsAndKeywords()}">Analysis & Export</div>
+      <div x-bind:class="`text-2xl m-4 cursor-pointer border-black ${tab === 'ed' ? 'border-b-2' : ''}`" @click="tab = 'ed'" x-show="Object.keys(docs).length > 0">Editor</div>
+    </div></header>
+    <main class="flex-grow overflow-y-auto m-4">
+      <div class="w-full p-2 flex flex-col h-full" x-show="tab === 'dl'">
+        <p class="text-xl mb-4">Timespan</p><div class="flex items-center w-full pl-2 pr-2">
+          <label for="from">from </label>
+          <input type="date" id="from" class="ml-2 mr-2 p-2 border-2 rounded h-10 flex-grow" x-bind:value="fromdate" @change="e => fromdate = e.target.value"/>
+          <label for="to">to </label>
+          <input type="date" id="to" class="ml-2 p-2 border-2 rounded h-10 flex-grow" x-bind:value="todate" @change="e => todate = e.target.value"/>
+        </div>
+        <div class="flex flex-col" x-html="getDlOptionHTML"></div>
+        <p class="text-xl mt-8 mb-4">Respondent</p><div class="w-full pl-2 pr-2"><input x-bind:disabled="customQuery !== ''" class="w-full p-2 border-2 rounded h-10" x-bind:value="respondent" @change="e => respondent = e.target.value" placeholder="Filter nach Respondant, getrennt durch Komma"/></div>`;
+        
+        <p class="text-xl mt-8 mb-4">Custom Query</p>
+        <div class="w-full pl-2 pr-2"><input class="w-full p-2 border-2 rounded h-10" x-bind:value="customQuery" @change="e => customQuery = e.target.value" placeholder="Eigener Query (ersetzt andere Optionen)"/></div>
+        
+        <p class="text-xl mt-8 mb-4">Experimental filter</p><div class="flex items-center pl-2 pr-2"><p class="mr-2">Filter out parties' submissions in english docs (experimental)</p><input type="checkbox" x-bind:value="experimentalShort" @change="e => experimentalShort = e.target.checked" /></div>
+
+        <p class="text-xl mt-8 mb-4">Strasbourg Observer</p><div class="flex items-center pl-2 pr-2"><p class="mr-2">Include Strasbourg Observer links</p><input type="checkbox" x-bind:value="includeObserver" @change="e => includeObserver = e.target.checked" /></div>
+        
+        <p class="text-xl mt-8 mb-4">Base set</p><div class="flex items-center pl-2 pr-2"><p class="mr-2">Base on existing set</p><input type="checkbox" x-bind:value="baseSet" @change="e => {baseSet = e.target.checked; if(baseSet) getSetsAndKeywords()}" />
+          <select x-html="() => getOptHTML(sets)" x-bind:value="baseSetName" @change="e => baseSetName = e.target.value" class="flex-grow p-2"></select>
+        </div>
+        
+        <p class="text-xl mt-8 mb-4">Save name</p><div class="w-full pl-2 pr-2"><input class="w-full p-2 border-2 rounded h-10" placeholder="Speichername" x-bind:value="savename", @change="e => savename = e.target.value"/></div>
+        
+        <button
+          @click="dlHudoc" x-bind:disabled="ctaDisable"
+          x-bind:class="`place-self-center rounded-lg mt-8 p-2 h-10 border-2 text-white ${ctaDisable ? 'border-gray-600 bg-gray-600' : 'border-indigo-600 bg-indigo-600 hover:bg-white hover:text-black'}`">
+          Download
+        </button>
+      </div>
+      
+      <div class="w-full p-2 flex flex-col h-full" x-show="tab === 'ae'">
+        <p class="text-xl mt-8 mb-4">Set</p>
+        <div class="flex pl-4 pr-4">
+          <select x-html="() => getOptHTML(sets)" x-bind:value="setName" @change="e => setName = e.target.value" class="flex-grow p-2"></select>
+        </div>
+        <p class="text-xl mt-8 mb-4">Keyword file</p>
+        <div class="flex pl-4 pr-4">
+          <select x-html="() => getOptHTML(keywordFiles)" x-bind:value="keywordFile" @change="e => {keywordFile = e.target.value; readKeywords}" class="flex-grow p-2"></select>
+          <input id="newkwfn" placeholder="Filename" class="border p-2 ml-2 flex-grow" @keyup.enter="createKeywordFile"/>
+          <button @click="createKeywordFile"
+            class="rounded border-2 ml-2 p-2 hover:bg-indigo-200 dark:hover:bg-indigo-600">
+            Create new keyword file
+          </button>
+        </div>
+        <p class="text-xl mt-8 mb-4">Manage keywords</p>
+        <div class="flex w-full">
+          <input id="addHeader" placeholder="Topic" class="border p-2 ml-2 flex-grow"/>
+          <input id="addQuery" placeholder="Keyword (prefix regex: for regex search)" class="border p-2 flex-grow" @keyup.enter="addKeyword"/>
+          <button class="rounded border-2 ml-2 p-2 h-10 hover:bg-indigo-200 dark:hover:bg-indigo-600"
+            @click="addKeyword">Add</button>
+        </div>
+        <div x-html="getKeywordChips" class="flex"></div>
+
+        <p class="text-xl mt-8 mb-4">Start analysis</p>
+        <div class="flex align-center items-center">
+          <button @click="getDocs" id="analyzeButton" x-bind:disabled="ctaDisable"
+            x-bind:class="`ctaButton w-80 rounded-lg p-2 h-10 border-2 text-white ${ctaDisable ? 'border-gray-600 bg-gray-600' : 'border-indigo-600 bg-indigo-600 hover:bg-white hover:text-black'}`">
+            Analyse
+          </button>
+          <div class="flex align-center">
+            <p class="mr-2 flex items-center">Hide seen</p>
+            <input type="checkbox" x-bind:value="hideSeen" @change="e => hideSeen = e.target.checked" />
+          </div>
+        </div>
+          
+        <p class="text-xl mt-8 mb-4">Export to .docx</p>
+        <div class="flex align-center items-center">
+          <button @click="exportDOCX" x-bind:disabled="ctaDisable"
+            x-bind:class="`ctaButton w-80 rounded-lg p-2 h-10 border-2 text-white ${ctaDisable ? 'border-gray-600 bg-gray-600' : 'border-indigo-600 bg-indigo-600 hover:bg-white hover:text-black'}`">
+            Export
+          </button>
+          <div class="flex align-center">
+            <p class="mr-2 flex items-center">Include unseen docs</p>
+            <input type="checkbox" x-bind:value="includeUndecided" @change="e => includeUndecided = e.target.checked" />
+          </div>
+        </div>
+      </div>
+
+      <div class="w-full p-2 flex h-full" x-show="tab === 'ed'">
+        <div x-html="treeHTML" class="w-1/6 h-full flex h-full flex-col overflow-y-auto"></div>
+        <div class="w-5/6 h-full flex flex-col ml-4">
+          <div class="w-full flex" x-show="docIndex !== ''">
+            <button x-bind:class="() => getButtonClass(1)" @click="() => setDocStatus(1)">Approve</button>
+            <button x-bind:class="() => getButtonClass(2)" @click="() => setDocStatus(2)">Disapprove</button>
+            <button x-bind:class="() => getButtonClass(0)" @click="() => setDocStatus(0)">Undecided</button>
+          </div>
+          <div x-html="getInfoHTML" class="flex flex-col w-full flex-grow overflow-y-auto"></div>
+        </div>
+      </div>
+    </main>
+    <footer>
+      <div class="w-full h-20 flex flex-col bg-white">
+        <p class="bg-white" id="progresstext"></p>
+        <progress min="0" max="100" value="0" class="w-full flex-grow bg-white h-15" id="progress"></progress>
+      </div>
+    </footer>
+  </body>
+</html>
