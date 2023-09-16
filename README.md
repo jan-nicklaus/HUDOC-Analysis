@@ -1,5 +1,5 @@
 # HUDOC-Analysis
-Download and search HUDOC documents to create case law overviews.
+Download and search HUDOC (https://hudoc.echr.coe.int/eng) documents to create case law overviews. © ECHR-CEDH for all documents downloaded with this tool.
 
 ## Running HUDOC Analysis
 For Windows and Linux, you can use the pre-built executables found under release v0.1. To run from source, install python 3.7+ and pip. Then, in the source directory, run "pip install -r requirements.txt". After the installation finishes, you can run the tool with "python hudoc_analysis.py".
