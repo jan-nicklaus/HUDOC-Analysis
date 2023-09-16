@@ -456,7 +456,7 @@ def export_docx(set_name, kw_dict, include_undecided = False):
         docs = {id: docs[id] for id in docs.keys() if docs[id]["approve_status"] == 1 or (include_undecided and docs[id]["approve_status"] == 0)}
 
         docx = Document()
-        docx.add_heading("HUDOC Overview", 0)
+        docx.add_heading("ECHR case law overview (all documents © ECHR-CEDH)", 0)
         for ind, a in enumerate(tqdm(tree.keys())):
             eel.setProgress(int(ind * 95.0 / len(tree.keys())), f"Exporting article {a}")
             docx.add_heading(f"Article {a[a.find('-') + 1:]} Protocol {a[1:a.find('-')]}" if a.startswith("P") else f"Article {a} ECHR", 1)
