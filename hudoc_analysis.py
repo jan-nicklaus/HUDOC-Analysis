@@ -37,24 +37,37 @@ def get_html(url, headers):
         time.sleep(5)
         return get_html(url, headers)
 
-def get_observer_urls(id):
-    """search for id on strasbourg observer website, gather all post links
+def get_blog_urls(id, accepted_blogs):
+    """search for id on various blogs, gather all post links
     :param id: HUDOC itemid to search for
     :type id: str
+    :param accepted_blogs: provide links to various blog posts mentioning each document, defaults to not including any blogs
+    :type accepted_blogs: dict, optional
     :return: List of post links joined by ;;;
     :rtype: str
     """
 
     try:
-        bs = BS(requests.get(f"https://strasbourgobservers.com/?s={id}").text, "lxml")
-        urls = list(set([u["href"] for u in bs.find_all("a", {"href": True}) if re.search("https\:\/\/strasbourgobservers.com\/\d+", u["href"])]))
+        urls = []
+        if accepted_blogs["strasbourg"]["include"]:
+            bs = BS(requests.get(f"https://strasbourgobservers.com/?s={id}").text, "lxml")
+            urls += list(set([u["href"] for u in bs.find_all("a", {"href": True}) if re.search("https\:\/\/strasbourgobservers.com\/\d+", u["href"])]))
+
+        if accepted_blogs["verfassungsblog"]["include"]:
+            bs = BS(requests.get(f"https://verfassungsblog.de/?s={id}").text, "lxml")
+            urls += list(set([u["href"] for u in bs.find_all("a", {"href": True}, string="Continue reading >>")]))
+        
+        if accepted_blogs["voelkerrechtsblog"]["include"]:
+            bs = BS(requests.get(f"https://voelkerrechtsblog.org/?s={id}").text, "lxml")
+            urls += list(set([u["href"] for u in bs.find("div", {"class": "results-items"}).find_all("a", {"href": True})])) if bs.find("div", {"class": "results-items"}) else []
+
         return ";;;".join(urls) #sqlite does not support list fields
     except Exception as error:
         print(error)
         return ""
 
 @eel.expose
-def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECISIONS, ADVISORYOPINIONS"], accepted_langs = ["ENG"], respondents = [], include_observer = True, experimental_short = False, custom_query = "", base_set_name = ""):
+def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECISIONS, ADVISORYOPINIONS"], accepted_langs = ["ENG"], respondents = [], accepted_blogs = {"strasbourg": False, "verfassungsblog": False, "voelkerrechtsblog": False}, experimental_short = False, custom_query = "", base_set_name = ""):
     """main function to download metadata and HTML from HUDOC and parse text sections from HTML
     :param from_date: begin of download timespan in format yyyy-mm-dd
     :type from_date: str
@@ -68,8 +81,8 @@ def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECI
     :type accepted_langs: list, optional
     :param respondents: if not empty, only save docs with these respondents, Country ISO Code or english name, ideally provide both, defaults to all respondents
     :type respondents: list, optional
-    :param include_observer: provide links to Strasbourg Observer posts mentioning each document, defaults to True
-    :type include_observer: bool, optional
+    :param accepted_blogs: provide links to various blog posts mentioning each document, defaults to not including any blogs
+    :type accepted_blogs: dict, optional
     :param experimental_short: Filter out parties' submissions by formatting and keywords, may filter out court's assessment in some instances -> use at own risk, defaults to False
     :type experimental_short: bool, optional
     :param custom_query: if provided, overwrites other params and query formatting in favor of own query, recommended only for advanced users looking for additional filters, defaults to no custom query
@@ -155,8 +168,7 @@ def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECI
             eel.setProgress(int(ind * 100.0 / len(results.keys())), f"Lade Dokument {ind + 1}/{len(results.keys())}")
             r["approve_status"] = 0
             result_url = f"https://hudoc.echr.coe.int/app/conversion/docx/html/body?library=ECHR&id={r['itemid']}"
-            if include_observer:
-                r["observer_urls"] = get_observer_urls(r["itemid"])
+            r["blog_urls"] = get_blog_urls(r["itemid"], accepted_blogs)
             r["html"] = get_html(result_url, HEADERS)
             if r["html"] == "":
                 fail_count += 1
@@ -359,7 +371,7 @@ def get_doc_info(h, experimental_short):
             info["conclusion_text"][i] = "\n"
         info["conclusion_text"] = "".join(info["conclusion_text"])
 
-        info["appnos"] = "\n".join(h["appno"].split(";")) if "appno" in h.keys() else ""
+        info["appnos"] = "\n".join(h["appno"].split(";")[:3]) if "appno" in h.keys() else ""
         info["date"] = h["kpdateastext"][:h["kpdateastext"].find(" ")]
         info["separate"] = f"Separate Opinion(s): {'No' if not h['separateopinion'] or h['separateopinion'] in ['', 'FALSE'] else get_opinion_header(h['html'])}"
         info["articles"] = "Article(s)\n" + "\n".join(h["article"].split(";"))
@@ -411,7 +423,18 @@ def get_docs(set_name, hide_seen, kw_dict):
                 continue
             d["kw_count"] = {k: d["fact_text"].count(k) + d["law_text"].count(k) for k in keywords if k in d["fact_text"] or k in d["law_text"]}
             d["kw_count"].update({k: len(re.findall(k[len("regex:"):], d["fact_text"] + d["law_text"])) for k in re_keywords if re.search(k[len("regex:"):], d["fact_text"] + d["law_text"])})
+            
             if len(d["kw_count"].keys()) > 0:
+                for k in d["kw_count"].keys(): #highlight keywords
+                    if k.startswith("regex"):
+                        for res in re.findall(k[len("regex:"):], d["fact_text"]):
+                            d["fact_text"] = d["fact_text"].replace(res, f'<a class="bg-yellow-200">{res}</a>')
+                        for res in re.findall(k[len("regex:"):], d["law_text"]):
+                            d["law_text"] = d["law_text"].replace(res, f'<a class="bg-yellow-200">{res}</a>')
+                    else:
+                        d["fact_text"] = d["fact_text"].replace(k, f'<a class="bg-yellow-200">{k}</a>')
+                        d["law_text"] = d["law_text"].replace(k, f'<a class="bg-yellow-200">{k}</a>')
+                
                 a_docs[d["itemid"]] = d
         
         tree = {}
@@ -420,7 +443,7 @@ def get_docs(set_name, hide_seen, kw_dict):
         for id in a_docs.keys():
             articles += a_docs[id]["article"].split(";")
         raw_articles = list(set(articles))
-        articles = sorted([a for a in raw_articles if not "-" in a], key=lambda x: int(max(re.findall("\d+", x))))
+        articles = sorted([a for a in raw_articles if not "-" in a], key=lambda x: int(max(re.findall("\d+", x))) if re.search("\d+", x) else 0)
         articles += sorted([a for a in raw_articles if re.search("^P\d+\-\d+$", a)], key=lambda x: int(x[1:x.find("-")]) * 500 + int(x[x.find("-") + 1:]))
 
         for a in articles:
