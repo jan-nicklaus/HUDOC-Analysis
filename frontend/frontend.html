@@ -258,7 +258,7 @@
           <input type="date" id="to" class="ml-2 p-2 border-2 rounded h-10 flex-grow" x-bind:value="todate" @change="e => todate = e.target.value"/>
         </div>
         <div class="flex flex-col" x-html="getDlOptionHTML"></div>
-        <p class="text-xl mt-8 mb-4">Respondent</p><div class="w-full pl-2 pr-2"><input x-bind:disabled="customQuery !== ''" class="w-full p-2 border-2 rounded h-10" x-bind:value="respondent" @change="e => respondent = e.target.value" placeholder="Filter nach Respondant, getrennt durch Komma"/></div>`;
+        <p class="text-xl mt-8 mb-4">Respondent</p><div class="w-full pl-2 pr-2"><input x-bind:disabled="customQuery !== ''" class="w-full p-2 border-2 rounded h-10" x-bind:value="respondent" @change="e => respondent = e.target.value" placeholder="Filter nach Respondant, getrennt durch Komma"/></div>
         
         <p class="text-xl mt-8 mb-4">Custom Query</p>
         <div class="w-full pl-2 pr-2"><input class="w-full p-2 border-2 rounded h-10" x-bind:value="customQuery" @change="e => customQuery = e.target.value" placeholder="Eigener Query (ersetzt andere Optionen)"/></div>
