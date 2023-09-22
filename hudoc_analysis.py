@@ -11,6 +11,7 @@ import re
 import time
 from datetime import datetime
 import sqlite3
+from urllib.parse import urlencode
 
 from docx import Document
 
@@ -37,10 +38,26 @@ def get_html(url, headers):
         time.sleep(5)
         return get_html(url, headers)
 
-def get_blog_urls(id, accepted_blogs):
+echrcaselaw_headers = {
+    "Host": "www.echrcaselaw.com",
+    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/117.0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "de,en-US;q=0.7,en;q=0.3",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "TE": "trailers"
+}
+
+def get_blog_urls(id, appno, accepted_blogs):
     """search for id on various blogs, gather all post links
     :param id: HUDOC itemid to search for
     :type id: str
+    :param appno: First appno of document
+    :type appno: str
     :param accepted_blogs: provide links to various blog posts mentioning each document, defaults to not including any blogs
     :type accepted_blogs: dict, optional
     :return: List of post links joined by ;;;
@@ -60,6 +77,10 @@ def get_blog_urls(id, accepted_blogs):
         if accepted_blogs["voelkerrechtsblog"]["include"]:
             bs = BS(requests.get(f"https://voelkerrechtsblog.org/?s={id}").text, "lxml")
             urls += list(set([u["href"] for u in bs.find("div", {"class": "results-items"}).find_all("a", {"href": True})])) if bs.find("div", {"class": "results-items"}) else []
+        
+        if accepted_blogs["echrcaselaw"]["include"]:
+            bs = BS(requests.get(f"https://www.echrcaselaw.com/en/?{urlencode({'s': appno})}", headers=echrcaselaw_headers).text, "lxml")
+            urls += list(set([u["href"] for u in bs.find_all("a", {"class": "readmore", "href": True})]))
 
         return ";;;".join(urls) #sqlite does not support list fields
     except Exception as error:
@@ -67,7 +88,7 @@ def get_blog_urls(id, accepted_blogs):
         return ""
 
 @eel.expose
-def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECISIONS, ADVISORYOPINIONS"], accepted_langs = ["ENG"], respondents = [], accepted_blogs = {"strasbourg": False, "verfassungsblog": False, "voelkerrechtsblog": False}, experimental_short = False, custom_query = "", base_set_name = ""):
+def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECISIONS, ADVISORYOPINIONS"], accepted_langs = ["ENG"], respondents = [], accepted_blogs = {"strasbourg": False, "verfassungsblog": False, "voelkerrechtsblog": False, "echrcaselaw": False}, experimental_short = False, custom_query = "", base_set_name = ""):
     """main function to download metadata and HTML from HUDOC and parse text sections from HTML
     :param from_date: begin of download timespan in format yyyy-mm-dd
     :type from_date: str
@@ -168,7 +189,7 @@ def dl_hudoc(from_date, to_date, save_name, accepted_types = ["JUDGMENTS", "DECI
             eel.setProgress(int(ind * 100.0 / len(results.keys())), f"Lade Dokument {ind + 1}/{len(results.keys())}")
             r["approve_status"] = 0
             result_url = f"https://hudoc.echr.coe.int/app/conversion/docx/html/body?library=ECHR&id={r['itemid']}"
-            r["blog_urls"] = get_blog_urls(r["itemid"], accepted_blogs)
+            r["blog_urls"] = get_blog_urls(r["itemid"], r["appno"].split(";")[0], accepted_blogs)
             r["html"] = get_html(result_url, HEADERS)
             if r["html"] == "":
                 fail_count += 1
