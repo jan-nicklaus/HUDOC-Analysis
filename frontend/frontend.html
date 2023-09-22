@@ -80,7 +80,8 @@
           acceptedBlogs: {
             strasbourg: {include: false, display: "Strasbourg Observers"},
             verfassungsblog: {include: false, display: "Verfassungsblog"},
-            voelkerrechtsblog: {include: false, display: "Völkerrechtsblog"}
+            voelkerrechtsblog: {include: false, display: "Völkerrechtsblog"},
+            echrcaselaw: {include: false, display: "echrcaselaw.com"}
           },
           experimentalShort: false,
           baseSet: false,
@@ -128,7 +129,7 @@
             optHTML += Object.keys(this.respondents).map(r => `<div class="m-2 flex"><p class="ml-2 mr-2">${this.respondents[r].display}</p><input type="checkbox" x-bind:disabled="customQuery !== ''" x-bind:value="respondents['${r}'].include" @change="e => respondents['${r}'].include = e.target.checked" /></div>`).join("");
             
             optHTML += '</div><p class="text-xl mt-8 mb-4">Include blog posts</p>';
-            optHTML += '<p class="mb-4">For each downloaded document, searches selected blogs for posts linking to the document and includes links to these posts. Please note that this increases download times significantly as a call to each blog has to be made for every document downloaded from HUDOC.</p><div class="flex items-center pr-2">'
+            optHTML += '<p class="mb-4">For each downloaded document, searches selected blogs for posts linking to the document and includes links to these posts. Please note that download times increase significantly with each included blog as a separate call has to be made for every document downloaded from HUDOC.</p><div class="flex items-center pr-2">'
             optHTML += Object.keys(this.acceptedBlogs).map(b => `<p class="ml-2 mr-2" x-text="acceptedBlogs['${b}'].display"></p><input type="checkbox" x-bind:disabled="customQuery !== ''" x-bind:value="acceptedBlogs['${b}'].include" @change="e => acceptedBlogs['${b}'].include = e.target.checked" />`).join("");
             optHTML += `</div>`
 
