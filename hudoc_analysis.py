@@ -514,6 +514,7 @@ def export_docx(set_name, kw_dict, include_undecided = False):
                     docx.add_heading(h["header"], 3)
                     docx.add_paragraph(h["violation_text"] if h["violation_text"] != "" else h["conclusion_text"])
                     table = docx.add_table(rows=1, cols=3)
+                    table.style = "Table Grid"
 
                     title_row = table.rows[0].cells
                     title_row[0].merge(title_row[1]).merge(title_row[2]).text = h["docname"]
